@@ -21,7 +21,7 @@ description: 나무위키 실시간 검색어(실검) 상위 10개를 받아 각
 
 이 저장소가 체크아웃된 로컬 환경에서:
 
-- `scripts/namu_ranking_snapshot.sh`를 실행한다. 받은 순위를 원격 `NAMU_BRANCH`에 커밋하고, 로컬 브랜치가 안전하게 빨리감기될 때 반영한다. 로컬 동기화가 안 되면 원격 브랜치의 `ranking-latest.json`을 읽는다. `ranking` 배열이 순위다. 수동 실행은 항상 새로 받는다.
+- `scripts/namu_ranking_snapshot.sh`를 경로 그대로 실행한다(`./scripts/namu_ranking_snapshot.sh`). zsh 스크립트라 `bash` 로 부르면 `emulate: command not found` 뒤 `/namu_ranking_snapshot.mjs` 를 못 찾고 죽는다(2026-10-28). 받은 순위를 원격 `NAMU_BRANCH`에 커밋하고, 로컬 브랜치가 안전하게 빨리감기될 때 반영한다. 로컬 동기화가 안 되면 원격 브랜치의 `ranking-latest.json`을 읽는다. `ranking` 배열이 순위다. 수동 실행은 항상 새로 받는다.
 - 실행이 실패하면(`RESULT fail ...`) 이미 있는 `ranking-latest.json` 의 `fetched_at` 을 본다. 3시간 안이면 그 순위를 쓰고 첫 줄 시각 뒤에 "(순위는 HH:MM 스냅샷)" 을 붙인다. 그보다 낡았으면 "수집 실패" 한 줄만 쓰고 끝낸다.
 
 체크아웃이 없거나 스크립트를 돌릴 수 없는 환경(샌드박스 등)에서:
