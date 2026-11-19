@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { acquireLock, cdpClient } from './lib.mjs';
 
 const WIN = process.platform === 'win32';
 const HOME = os.homedir();
@@ -96,15 +97,12 @@ const gitNet = args => git(['-c', 'http.lowSpeedLimit=1000', '-c', 'http.lowSpee
 log(`START mode=${mode} pid=${process.pid}`);
 
 // 슬롯과 RunAtLoad 가 같은 순간에 뜰 수 있어 겹쳐 도는 것을 막는다.
-function alive(pid) { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } }
-try { fs.mkdirSync(LOCK); haveLock = true; } catch {
-  let holder = 0;
-  try { holder = Number(fs.readFileSync(path.join(LOCK, 'pid'), 'utf8').trim()) || 0; } catch {}
-  if (holder && alive(holder)) { emit(`skip reason=locked holder=${holder} mode=${mode}`); process.exit(0); }
-  try { fs.rmSync(LOCK, { recursive: true, force: true }); fs.mkdirSync(LOCK); haveLock = true; } catch {}  // 죽은 락이면 뺏는다
+const lk = acquireLock(LOCK);
+if (!lk.ok) {
+  emit(lk.holder ? `skip reason=locked holder=${lk.holder} mode=${mode}` : `skip reason=lock-unavailable mode=${mode}`);
+  process.exit(0);
 }
-if (!haveLock) { emit(`skip reason=lock-unavailable mode=${mode}`); process.exit(0); }
-fs.writeFileSync(path.join(LOCK, 'pid'), String(process.pid));
+haveLock = true;
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const checkoutBranch = git(['symbolic-ref', '--quiet', '--short', 'HEAD']).out;
@@ -151,12 +149,10 @@ async function fetchOnce(chromePath) {
       try { port = fs.readFileSync(path.join(dir, 'DevToolsActivePort'), 'utf8').split('\n')[0]; } catch {}
     }
     if (!port) return { error: 'chrome-start' };
-    const page = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t => t.type === 'page');
+    const page = (await (await fetch(`http://127.0.0.1:${port}/json/list`, { signal: AbortSignal.timeout(10000) })).json()).find(t => t.type === 'page');
     ws = new WebSocket(page.webSocketDebuggerUrl);
     await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = () => no(new Error('cdp-connect')); });
-    let id = 0; const pend = new Map();
-    ws.onmessage = ev => { const m = JSON.parse(ev.data); if (m.id && pend.has(m.id)) { pend.get(m.id)(m); pend.delete(m.id); } };
-    const send = (method, params = {}) => new Promise(r => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+    const send = cdpClient(ws);
 
     // 헤드리스 표식만 지운다. 나머지는 이 기기 Chrome 그대로다.
     const ua = (await send('Browser.getVersion')).result.userAgent.replace('HeadlessChrome', 'Chrome');
